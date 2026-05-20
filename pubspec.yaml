@@ -1,0 +1,107 @@
+name: watch_hub
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+
+  flutter:
+    sdk: flutter
+  # State Management
+  provider: ^6.1.1              # Simple state management
+  # Navigation
+  go_router: ^13.0.0            # Modern routing
+  # Backend/Database
+  supabase_flutter: ^2.8.4      # Supabase Auth + Realtime (direct auth SDK)
+  dio: ^5.4.0                   # API calls (better than http)
+  # Local Storage
+  shared_preferences: ^2.2.2    # Save simple data (tokens, settings)
+  hive: ^2.2.3                  # Local database (offline mode)
+  hive_flutter: ^1.1.0
+  # UI Components
+  cached_network_image: ^3.3.1  # Load images smoothly
+  flutter_svg: ^2.0.9           # SVG icons
+  shimmer: ^3.0.0               # Loading skeleton
+  lottie: ^3.0.0                # Animations
+  # Toast Notifications
+  fluttertoast: ^8.2.4
+  toastification: ^1.2.1
+  # Icons
+  iconsax: ^0.0.8                  # Beautiful icon pack
+  # Forms & Validation
+  flutter_form_builder: ^9.1.1  # Easy forms
+  # Image Handling
+  image_picker: ^1.0.7          # Pick images (profile pic)
+  # Utilities
+  intl: ^0.19.0                 # Date/number formatting
+  uuid: ^4.3.3                  # Generate unique IDs
+  # Security
+  flutter_secure_storage: ^9.0.0  # Store sensitive data (tokens)
+  # Environment Variables
+  flutter_dotenv: ^5.1.0        # Manage API keys
+  # Networking
+  connectivity_plus: ^5.0.2     # Check internet connection
+  # Video
+  video_player: ^2.9.2          # Play local/network videos
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1         # Code quality
+  mockito: ^5.4.4               # Testing
+
+  flutter_launcher_icons: ^0.13.1  # App icon generator
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - .env
+    - .env.local
+    - .env.production
+    - assets/images/
+    - assets/icons/
+    - assets/videos/
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope/Manrope-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Manrope/Manrope-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Manrope/Manrope-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Manrope/Manrope-Bold.ttf
+          weight: 700
+
+    - family: InstrumentSans
+      fonts:
+        - asset: assets/fonts/InstrumentSans/InstrumentSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/InstrumentSans/InstrumentSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/InstrumentSans/InstrumentSans-Bold.ttf
+          weight: 700
+
+    - family: InstrumentSerif
+      fonts:
+        - asset: assets/fonts/InstrumentSerif/InstrumentSerif-Regular.ttf
+          weight: 400
+
+# flutter_launcher_icons configuration
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "web/favicon.png"
+  web:
+    generate: true
+    image_path: "web/favicon.png"
+  windows:
+    generate: true
+    image_path: "web/favicon.png"
+  macos:
+    generate: true
+    image_path: "web/favicon.png"

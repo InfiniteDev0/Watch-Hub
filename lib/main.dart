@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:watch_hub/app.dart';
+import 'package:watch_hub/core/providers/app_bootstrap_provider.dart';
 import 'package:watch_hub/core/providers/connectivity_provider.dart';
 import 'package:watch_hub/features/auth/data/repositories/auth_repository.dart';
 import 'package:watch_hub/features/auth/data/services/auth_service.dart';
@@ -34,8 +35,15 @@ void main() async {
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
-  // Build the dependency graph
+  // Build the dependency graph. Wishlist + cart are created here so the
+  // bootstrap provider can fan-out preload calls into them.
   final authProvider = AuthProvider(AuthRepository(AuthService()));
+  final wishlistProvider = WishlistProvider();
+  final cartProvider = CartProvider();
+  final bootstrapProvider = AppBootstrapProvider(
+    wishlist: wishlistProvider,
+    cart: cartProvider,
+  );
 
   runApp(
     MultiProvider(
@@ -44,8 +52,11 @@ void main() async {
         ChangeNotifierProvider<ConnectivityProvider>(
           create: (_) => ConnectivityProvider(),
         ),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
-        ChangeNotifierProvider(create: (_) => WishlistProvider()),
+        ChangeNotifierProvider<CartProvider>.value(value: cartProvider),
+        ChangeNotifierProvider<WishlistProvider>.value(value: wishlistProvider),
+        ChangeNotifierProvider<AppBootstrapProvider>.value(
+          value: bootstrapProvider,
+        ),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
         ChangeNotifierProvider(create: (_) => ReviewProvider()),

@@ -18,6 +18,11 @@ class WishlistProvider extends ChangeNotifier {
   String? get error => _error;
   int get count => _items.length;
 
+  /// Read-only view of the wishlisted product ids. Exposed so consumers
+  /// (e.g. the product grid) can `context.select` on just this set and
+  /// avoid rebuilding when other wishlist state changes.
+  Set<String> get wishlistedIds => Set.unmodifiable(_productIds);
+
   bool isInWishlist(String productId) => _productIds.contains(productId);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
@@ -94,6 +99,16 @@ class WishlistProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Drop all local state — used on sign-out so the next user doesn't
+  /// see the previous user's saved items leak through.
+  void clear() {
+    _items = [];
+    _productIds.clear();
+    _initialLoading = false;
+    _error = null;
+    notifyListeners();
   }
 
   String _readable(Object e) {

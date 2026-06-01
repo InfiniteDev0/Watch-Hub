@@ -125,6 +125,16 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drop all local state — used on sign-out so the next user doesn't
+  /// inherit the previous user's bag.
+  void clear() {
+    _cart = null;
+    _initialLoading = false;
+    _isAdding = false;
+    _error = null;
+    notifyListeners();
+  }
+
   String _readable(Object e) {
     final msg = e.toString();
     return msg.startsWith('Exception:') ? msg.substring(10).trim() : msg;

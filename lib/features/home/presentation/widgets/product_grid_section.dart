@@ -53,9 +53,15 @@ class _ProductGridSectionState extends State<ProductGridSection> {
 
   Future<void> _fetchProducts() async {
     if (_initialLoad) {
-      setState(() { _loading = true; _error = null; });
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     } else {
-      setState(() { _refreshing = true; _error = null; });
+      setState(() {
+        _refreshing = true;
+        _error = null;
+      });
     }
     try {
       final f = widget.filter;
@@ -143,11 +149,17 @@ class _ProductGridSectionState extends State<ProductGridSection> {
       );
     }
 
+    // Watch the wishlist so hearts reflect optimistic toggles instantly.
+    // Each ProductCard is wrapped in RepaintBoundary so this rebuild is
+    // cheap — only the changed heart icon repaints.
     final wishlist = context.watch<WishlistProvider>();
 
     Widget grid = GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      // Drawing slightly past the viewport keeps cards warm so a fling
+      // doesn't expose blank tiles waiting to be built.
+      cacheExtent: 600,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 12,
@@ -159,6 +171,7 @@ class _ProductGridSectionState extends State<ProductGridSection> {
         if (_loading) return const ShimmerProductCard();
         final p = _products[index];
         return ProductCard(
+          key: ValueKey(p.id),
           imageUrl: p.primaryImage ?? '',
           title: p.name,
           price: p.price,

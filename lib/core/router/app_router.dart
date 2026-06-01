@@ -82,11 +82,8 @@ class AppRouter {
         final isLoggedIn = authProvider.isLoggedIn;
         final isAdmin = authProvider.isAdmin;
 
-        // Once initialized, navigate away from the splash screen.
-        if (loc == splash) {
-          if (!isLoggedIn) return onboarding;
-          return isAdmin ? admin : home;
-        }
+        // Splash owns its own dismissal (after data preload). Don't pre-empt.
+        if (loc == splash) return null;
 
         // Protected customer routes require login, admin gets bounced to /admin.
         final isCustomerZone = loc.startsWith(home);
@@ -105,11 +102,12 @@ class AppRouter {
       },
 
       routes: [
-        // Splash — full-screen loader while auth session is validated
+        // Splash — full-screen loader while auth session is validated.
+        // Uses a fade so the handoff to home/onboarding feels seamless.
         GoRoute(
           path: splash,
           pageBuilder: (context, state) =>
-              _slide(context, state, const SplashScreen()),
+              _fade(context, state, const SplashScreen()),
         ),
 
         // Onboarding
@@ -173,11 +171,11 @@ class AppRouter {
           },
         ),
 
-        // Home
+        // Home — fade in so the splash hand-off feels seamless.
         GoRoute(
           path: home,
           pageBuilder: (context, state) =>
-              _slide(context, state, const HomeScreen()),
+              _fade(context, state, const HomeScreen()),
         ),
 
         // Brands
@@ -301,7 +299,9 @@ class AppRouter {
     );
   }
 
-  // ==================== CUSTOM SLIDE TRANSITION ====================
+  // ==================== TRANSITIONS ====================
+  // Snappy 220ms slide for navigation — feels significantly more
+  // responsive than the previous 300ms easeInOut.
   static CustomTransitionPage<void> _slide(
     BuildContext context,
     GoRouterState state,
@@ -311,15 +311,32 @@ class AppRouter {
       key: state.pageKey,
       child: child,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(1.0, 0.0);
-        const end = Offset.zero;
-        final tween = Tween(
-          begin: begin,
-          end: end,
-        ).chain(CurveTween(curve: Curves.easeInOut));
-        return SlideTransition(position: animation.drive(tween), child: child);
+        final position = animation.drive(
+          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+              .chain(CurveTween(curve: Curves.easeOutCubic)),
+        );
+        return SlideTransition(position: position, child: child);
       },
-      transitionDuration: const Duration(milliseconds: 300),
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 200),
+    );
+  }
+
+  // Splash and other "atomic" hand-offs use a fade so they don't feel
+  // like a separate screen the user just slid past.
+  static CustomTransitionPage<void> _fade(
+    BuildContext context,
+    GoRouterState state,
+    Widget child,
+  ) {
+    return CustomTransitionPage(
+      key: state.pageKey,
+      child: child,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 200),
     );
   }
 }

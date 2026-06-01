@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class ProductCard extends StatelessWidget {
@@ -30,23 +31,43 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        child: _buildCard(),
+      ),
+    );
+  }
+
+  Widget _buildCard() {
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 1. Image Section
           Expanded(
             child: Stack(
               children: [
-                Container(
-                  decoration: BoxDecoration(
+                // CachedNetworkImage keeps decoded bitmaps in memory and on
+                // disk so revisiting / re-scrolling the grid never re-downloads
+                // or re-decodes the same image — eliminates scroll jank.
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
                     color: const Color(0xFFF6F6F6),
-                    borderRadius: BorderRadius.circular(4),
-                    image: DecorationImage(
-                      image: NetworkImage(imageUrl),
-                      fit: BoxFit.contain,
-                    ),
+                    width: double.infinity,
+                    height: double.infinity,
+                    child: imageUrl.isEmpty
+                        ? const SizedBox()
+                        : CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.contain,
+                            fadeInDuration: const Duration(milliseconds: 180),
+                            fadeOutDuration: Duration.zero,
+                            placeholder: (_, __) =>
+                                const ColoredBox(color: Color(0xFFF6F6F6)),
+                            errorWidget: (_, __, ___) =>
+                                const ColoredBox(color: Color(0xFFF6F6F6)),
+                          ),
                   ),
                 ),
                 // "New" Badge — Top Left
@@ -162,7 +183,6 @@ class ProductCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
     );
   }
 }

@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to your photos so you can upload product and brand images.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We need access to your camera so you can capture product and brand images.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We do not use the microphone. This entry is required by the image picker plugin.</string>
 </dict>
 </plist>

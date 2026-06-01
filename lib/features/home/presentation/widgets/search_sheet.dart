@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:watch_hub/core/constants/app_assets.dart';
@@ -10,15 +11,11 @@ import 'package:watch_hub/features/brands/data/repositories/brands_repository.da
 import 'package:watch_hub/features/product/data/models/products_model.dart';
 import 'package:watch_hub/features/product/data/services/products_service.dart';
 
+/// Full-screen search experience. Pushed as a route from home so it owns
+/// its own keyboard lifecycle — that's what eliminates the stuck/glitchy
+/// keyboard behaviour from the previous always-mounted-Stack overlay.
 class SearchSheet extends StatefulWidget {
-  final VoidCallback onClose;
-  final FocusNode focusNode;
-
-  const SearchSheet({
-    super.key,
-    required this.onClose,
-    required this.focusNode,
-  });
+  const SearchSheet({super.key});
 
   @override
   State<SearchSheet> createState() => _SearchSheetState();
@@ -26,6 +23,7 @@ class SearchSheet extends StatefulWidget {
 
 class _SearchSheetState extends State<SearchSheet> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   final _brandsRepo = BrandsRepository();
   final _productsService = ProductsService();
 
@@ -44,12 +42,21 @@ class _SearchSheetState extends State<SearchSheet> {
     super.initState();
     _loadPopular();
     _controller.addListener(_onQueryChanged);
+    // Request focus once the route's enter transition has settled — doing
+    // it during initState (or before the route is mounted) is what makes
+    // the keyboard fight with the slide animation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 280), () {
+        if (mounted) _focusNode.requestFocus();
+      });
+    });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -88,8 +95,6 @@ class _SearchSheetState extends State<SearchSheet> {
     }
 
     final lower = q.toLowerCase();
-
-    // Filter brands & products from already-loaded data immediately
     setState(() {
       _filteredBrands = _allBrands
           .where((b) => b.name.toLowerCase().contains(lower))
@@ -105,102 +110,118 @@ class _SearchSheetState extends State<SearchSheet> {
     });
   }
 
+  void _close() {
+    // Dropping focus before pop lets the keyboard slide down *with* the
+    // route exit instead of snapping after pop — much smoother.
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).maybePop();
+  }
+
   void _goToBrand(BrandModel brand) {
-    widget.onClose();
+    _close();
     context.push('/brands/${brand.id}');
   }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFF111111),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Search bar ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5E5E5),
-                  borderRadius: BorderRadius.circular(8),
+    return PopScope(
+      // Match the keyboard dismiss-then-pop dance for the Android back btn.
+      canPop: true,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF111111),
+          // resizeToAvoidBottomInset = true is fine because this route
+          // doesn't share its layout with anything else — only this screen
+          // reflows when the keyboard appears.
+          resizeToAvoidBottomInset: true,
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSearchBar(),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _query.isNotEmpty
+                      ? _buildSuggestions()
+                      : _buildDefaultContent(),
                 ),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    SvgPicture.asset(
-                      AppAssets.searchIcon,
-                      colorFilter: const ColorFilter.mode(
-                        Colors.black,
-                        BlendMode.srcIn,
-                      ),
-                      width: 20,
-                      height: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: widget.focusNode,
-                        autofocus: false,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 16,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: 'Search for a watch',
-                          hintStyle: TextStyle(
-                            fontFamily: AppAssets.instrumentSerif,
-                            color: Colors.black54,
-                            fontSize: 18,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ),
-                    if (_query.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close,
-                          color: Colors.black54,
-                          size: 20,
-                        ),
-                        onPressed: () => _controller.clear(),
-                      )
-                    else
-                      IconButton(
-                        icon: SvgPicture.asset(
-                          AppAssets.closeIcon,
-                          colorFilter: const ColorFilter.mode(
-                            Colors.black,
-                            BlendMode.srcIn,
-                          ),
-                          width: 20,
-                          height: 20,
-                        ),
-                        onPressed: widget.onClose,
-                      ),
-                  ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE5E5E5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            SvgPicture.asset(
+              AppAssets.searchIcon,
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              width: 20,
+              height: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: false,
+                style: const TextStyle(color: Colors.black, fontSize: 16),
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: 'Search for a watch',
+                  hintStyle: TextStyle(
+                    fontFamily: AppAssets.instrumentSerif,
+                    color: Colors.black54,
+                    fontSize: 18,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                 ),
               ),
             ),
-
-            const SizedBox(height: 8),
-
-            // ── Body ────────────────────────────────────────────────
-            Expanded(
-              child: _query.isNotEmpty
-                  ? _buildSuggestions()
-                  : _buildDefaultContent(),
-            ),
+            if (_query.isNotEmpty)
+              IconButton(
+                icon: const Icon(
+                  Icons.close,
+                  color: Colors.black54,
+                  size: 20,
+                ),
+                onPressed: () => _controller.clear(),
+              )
+            else
+              IconButton(
+                icon: SvgPicture.asset(
+                  AppAssets.closeIcon,
+                  colorFilter: const ColorFilter.mode(
+                    Colors.black,
+                    BlendMode.srcIn,
+                  ),
+                  width: 20,
+                  height: 20,
+                ),
+                onPressed: _close,
+              ),
           ],
         ),
       ),
@@ -209,12 +230,10 @@ class _SearchSheetState extends State<SearchSheet> {
 
   // ── Suggestions view (while typing) ──────────────────────────────
   Widget _buildSuggestions() {
-    // Brand pills: brands matching query, else all brands
     final pillBrands = _filteredBrands.isNotEmpty
         ? _filteredBrands
         : _allBrands.take(6).toList();
 
-    // Keyword suggestions: distinct product names containing query
     final suggestions = _popularProducts
         .map((p) => p.name)
         .where((n) => n.toLowerCase().contains(_query.toLowerCase()))
@@ -227,8 +246,9 @@ class _SearchSheetState extends State<SearchSheet> {
 
     return ListView(
       padding: EdgeInsets.zero,
+      // Keep the keyboard up while the user inspects suggestions.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        // ── "Search [Query] In" + brand pills ───────────────────
         if (pillBrands.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
@@ -279,13 +299,12 @@ class _SearchSheetState extends State<SearchSheet> {
           const SizedBox(height: 24),
         ],
 
-        // ── "Suggested" keyword list ─────────────────────────────
         if (suggestions.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: Text(
               'Suggested',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white38,
                 fontFamily: AppAssets.manrope,
                 fontSize: 13,
@@ -313,7 +332,6 @@ class _SearchSheetState extends State<SearchSheet> {
           const SizedBox(height: 20),
         ],
 
-        // ── "Top Results For [Query]" product grid ───────────────
         if (_searching)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
@@ -372,7 +390,6 @@ class _SearchSheetState extends State<SearchSheet> {
     );
   }
 
-  // ── Default content (empty query) ─────────────────────────────────
   Widget _buildDefaultContent() {
     if (_loadingPopular) {
       return const Center(
@@ -389,17 +406,14 @@ class _SearchSheetState extends State<SearchSheet> {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Popular brands ───────────────────────────────────────
           _sectionLabel('Popular brands'),
           const SizedBox(height: 12),
           ..._allBrands.take(6).map(_brandRow),
-
           const SizedBox(height: 28),
-
-          // ── Popular products ─────────────────────────────────────
           if (_popularProducts.isNotEmpty) ...[
             _sectionLabel('Popular Products'),
             const SizedBox(height: 12),
@@ -418,186 +432,114 @@ class _SearchSheetState extends State<SearchSheet> {
     );
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────
-
   Widget _sectionLabel(String label) => Text(
-    label,
-    style: const TextStyle(
-      fontFamily: AppAssets.instrumentSerif,
-      fontSize: 18,
-      color: Colors.white54,
-    ),
-  );
-
-  /// Tappable brand row — used in default "Popular brands" section
-  Widget _brandRow(BrandModel brand) => InkWell(
-    onTap: () => _goToBrand(brand),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          // logo thumbnail
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white10,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: brand.logoUrl != null && brand.logoUrl!.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: brand.logoUrl!,
-                    fit: BoxFit.contain,
-                    errorWidget: (_, __, ___) => const SizedBox(),
-                  )
-                : const SizedBox(),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              brand.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: AppAssets.manrope,
-                fontSize: 15,
-              ),
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: Colors.white38, size: 18),
-        ],
-      ),
-    ),
-  );
-
-  /// Brand row used in suggestions list (typing state)
-  Widget _brandSuggestionRow(BrandModel brand) => InkWell(
-    onTap: () => _goToBrand(brand),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.storefront_outlined,
-            color: Colors.white38,
-            size: 18,
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: _highlightedText(brand.name, _query)),
-          const Icon(Icons.north_west, color: Colors.white24, size: 14),
-        ],
-      ),
-    ),
-  );
-
-  /// Product row used in suggestions list
-  Widget _productSuggestionRow(ProductModel product) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        // small thumbnail
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: product.primaryImage != null
-              ? CachedNetworkImage(
-                  imageUrl: product.primaryImage!,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const SizedBox(),
-                )
-              : const SizedBox(),
+        label,
+        style: const TextStyle(
+          fontFamily: AppAssets.instrumentSerif,
+          fontSize: 18,
+          color: Colors.white54,
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      );
+
+  Widget _brandRow(BrandModel brand) => InkWell(
+        onTap: () => _goToBrand(brand),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
             children: [
-              _highlightedText(product.name, _query),
-              if (product.brandName != null)
-                Text(
-                  product.brandName!,
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: brand.logoUrl != null && brand.logoUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: brand.logoUrl!,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, __, ___) => const SizedBox(),
+                      )
+                    : const SizedBox(),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  brand.name,
                   style: const TextStyle(
-                    color: Colors.white38,
+                    color: Colors.white,
                     fontFamily: AppAssets.manrope,
-                    fontSize: 12,
+                    fontSize: 15,
                   ),
                 ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white38, size: 18),
             ],
           ),
         ),
-        Text(
-          '\$${product.price.toStringAsFixed(0)}',
-          style: const TextStyle(
-            color: Colors.white54,
-            fontFamily: AppAssets.manrope,
-            fontSize: 13,
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 
-  /// Product grid card — used in default "Popular products" section
-  Widget _productCard(ProductModel product) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Expanded(
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: product.primaryImage != null
-              ? CachedNetworkImage(
-                  imageUrl: product.primaryImage!,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  errorWidget: (_, __, ___) => const SizedBox(),
-                )
-              : const SizedBox(),
+  Widget _productCard(ProductModel product) => GestureDetector(
+        onTap: () {
+          _close();
+          context.push('/products/${product.id}');
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: product.primaryImage != null
+                    ? CachedNetworkImage(
+                        imageUrl: product.primaryImage!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        errorWidget: (_, __, ___) => const SizedBox(),
+                      )
+                    : const SizedBox(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              product.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: AppAssets.manrope,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (product.brandName != null)
+              Text(
+                product.brandName!,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontFamily: AppAssets.manrope,
+                  fontSize: 11,
+                ),
+              ),
+            const SizedBox(height: 2),
+            Text(
+              '\$${product.price.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontFamily: AppAssets.manrope,
+                fontSize: 13,
+              ),
+            ),
+          ],
         ),
-      ),
-      const SizedBox(height: 8),
-      Text(
-        product.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontFamily: AppAssets.manrope,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      if (product.brandName != null)
-        Text(
-          product.brandName!,
-          maxLines: 1,
-          style: const TextStyle(
-            color: Colors.white38,
-            fontFamily: AppAssets.manrope,
-            fontSize: 11,
-          ),
-        ),
-      const SizedBox(height: 2),
-      Text(
-        '\$${product.price.toStringAsFixed(0)}',
-        style: const TextStyle(
-          color: Colors.white70,
-          fontFamily: AppAssets.manrope,
-          fontSize: 13,
-        ),
-      ),
-    ],
-  );
+      );
 
-  /// Renders text with the matching portion bold + white
   Widget _highlightedText(String text, String query) {
     final lower = text.toLowerCase();
     final qLower = query.toLowerCase();

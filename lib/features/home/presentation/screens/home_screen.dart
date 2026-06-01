@@ -18,15 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isMenuOpen = false;
-  bool _isSearchOpen = false;
-  final FocusNode _searchFocusNode = FocusNode();
   ProductFilter _filter = const ProductFilter.empty();
-
-  @override
-  void dispose() {
-    _searchFocusNode.dispose();
-    super.dispose();
-  }
 
   void _openFilterSheet() {
     showModalBottomSheet(
@@ -47,31 +39,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _closeMenu() {
+    if (!_isMenuOpen) return;
     setState(() {
       _isMenuOpen = false;
     });
   }
 
+  /// Push the search experience as its own page so it owns its keyboard
+  /// lifecycle. Keeping it as an AnimatedPositioned overlay in the home
+  /// Stack was what caused the home Scaffold to rebuild on every keyboard
+  /// frame (MediaQuery viewInsets changes), producing the stuck-key feel.
   void _openSearch() {
-    setState(() {
-      _isSearchOpen = true;
-    });
-    // Delay focus until the animation starts so the keyboard appears with the sheet
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _searchFocusNode.requestFocus();
-    });
-  }
-
-  void _closeSearch() {
-    _searchFocusNode.unfocus();
-    setState(() {
-      _isSearchOpen = false;
-    });
+    _closeMenu();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: true,
+        barrierDismissible: false,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return const SearchSheet();
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final slide = Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation);
+          return SlideTransition(position: slide, child: child);
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    // Compute once per build — used by both the side-menu offset and
+    // the dismiss-tap region.
+    final topPad = MediaQuery.paddingOf(context).top;
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
     return Scaffold(
       backgroundColor: isDarkMode
@@ -82,6 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Main scrollable content
           CustomScrollView(
+            // Larger cacheExtent so the grid below the fold is already
+            // built when the user starts flinging.
+            cacheExtent: 800,
             slivers: [
               // Fixed App Bar
               HomeAppBar(
@@ -115,37 +124,26 @@ class _HomeScreenState extends State<HomeScreen> {
           // Dark backdrop (closes sheet on tap)
           if (_isMenuOpen)
             Positioned.fill(
-              top: MediaQuery.of(context).padding.top + 56, // below the appbar
+              top: topPad + 56,
               child: GestureDetector(
                 onTap: _closeMenu,
                 behavior: HitTestBehavior.opaque,
-                child: Container(color: Colors.black.withOpacity(0.6)),
+                child: Container(color: Colors.black.withValues(alpha: 0.6)),
               ),
             ),
 
-          // Side menu sheet
+          // Side menu sheet — mounted only when needed so off-screen state
+          // doesn't keep its subtree alive (and rebuilding on auth changes).
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            top: MediaQuery.of(context).padding.top + 56,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            top: topPad + 56,
             bottom: 0,
-            right: _isMenuOpen ? 0 : -(MediaQuery.of(context).size.width),
-            width: MediaQuery.of(context).size.width,
-            child: SideMenuSheet(onClose: _closeMenu),
-          ),
-
-          // Search Sheet
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOutCubic,
-            left: 0,
-            right: 0,
-            top: _isSearchOpen ? 0 : MediaQuery.of(context).size.height,
-            bottom: _isSearchOpen ? 0 : -(MediaQuery.of(context).size.height),
-            child: SearchSheet(
-              onClose: _closeSearch,
-              focusNode: _searchFocusNode,
-            ),
+            right: _isMenuOpen ? 0 : -screenWidth,
+            width: screenWidth,
+            child: _isMenuOpen
+                ? SideMenuSheet(onClose: _closeMenu)
+                : const SizedBox.shrink(),
           ),
         ],
       ),
